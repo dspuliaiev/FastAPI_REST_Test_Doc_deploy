@@ -1,53 +1,47 @@
 # Stage 1: Build
-FROM python:3.12-bullseye AS builder
+FROM python:3.12-bookworm AS builder
 
-# Set environment variables to prevent Python from writing .pyc files and to buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Update packages and install build dependencies
+# Install build dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential libpq-dev zlib1g-dev \
+    build-essential \
+    libpq-dev \
+    zlib1g-dev \
     && rm -rf /var/lib/apt/lists/*
 
-# Optionally, try upgrading libpq-dev if needed for SNI support
-RUN apt-get update && apt-get install -y libpq5
-
-# Set the working directory
 WORKDIR /app
 
-# Copy the requirements file
-COPY requirements.txt /app/
+# Copy requirements first for better Docker cache
+COPY requirements.txt .
 
-# Upgrade pip and install dependencies
-RUN pip install --upgrade pip --no-cache-dir && pip install -r requirements.txt
+# Install Python dependencies
+RUN pip install --upgrade pip --no-cache-dir \
+    && pip install --no-cache-dir -r requirements.txt
 
-# Copy the rest of the project code
-COPY . /app/
+# Copy project
+COPY . .
+
 
 # Stage 2: Final
-FROM python:3.12-bullseye
+FROM python:3.12-bookworm
 
-# Set environment variables to prevent Python from writing .pyc files and to buffer stdout/stderr
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Update packages and install runtime dependencies
+# Install runtime dependencies
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev zlib1g \
+    libpq5 \
     && rm -rf /var/lib/apt/lists/*
 
-# Optionally, try upgrading libpq-dev in the runtime environment as well
-RUN apt-get update && apt-get install -y libpq5
-
-# Set the working directory
 WORKDIR /app
 
-# Copy installed dependencies from the builder stage
+# Copy installed Python packages
 COPY --from=builder /usr/local /usr/local
 
-# Copy the rest of the project code
-COPY . /app/
+# Copy application
+COPY . .
 
-# Command to run the application using Uvicorn
+# Start application
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000", "--log-level", "info"]
